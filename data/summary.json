@@ -1,0 +1,31 @@
+{
+  "total_sectors": 9,
+  "total_wastage_events": 545,
+  "total_wastage_mw_hrs": 14302.3,
+  "total_tx_loss_mw_hrs": 573856.45,
+  "total_bdt_wasted": 4999346067.0,
+  "total_co2_kg": 341131850.40000004,
+  "total_fuel_liters": 164684342.7,
+  "avg_daily_wastage_mw": 158.91444444444443,
+  "sectors": [
+    "Dhaka Industrial (Narayanganj RMG Zone)",
+    "Gulshan Commercial District",
+    "Chittagong Port Industrial",
+    "Sylhet Urban Residential",
+    "Rajshahi Commercial",
+    "Khulna Industrial",
+    "Barishal Urban",
+    "Rangpur Rural-Urban",
+    "Mymensingh Mixed"
+  ],
+  "divisions": [
+    "Rangpur",
+    "Sylhet",
+    "Barishal",
+    "Mymensingh",
+    "Rajshahi",
+    "Chittagong",
+    "Dhaka",
+    "Khulna"
+  ]
+}
