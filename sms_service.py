@@ -1,5 +1,5 @@
 """
-GridHaat Email Alert Service
+GridAid Email Alert Service
 Supports: Gmail SMTP (production) | Demo mode (no key needed)
 """
 import hashlib, smtplib
@@ -33,7 +33,7 @@ def build_email_body(sector: str, mw: float, bdt: float, wastage_type: str,
     type_label = type_labels.get(wastage_type, "Anomaly detected")
     bdt_lakh   = bdt / 100_000
     return (
-        f"GridHaat AI ALERT #{verify_code}\n"
+        f"GridAid AI ALERT #{verify_code}\n"
         f"{'─'*22}\n"
         f"Zone    : {sector[:28]}\n"
         f"Line    : Grid {grid_line}\n"
@@ -44,7 +44,7 @@ def build_email_body(sector: str, mw: float, bdt: float, wastage_type: str,
         f"{'─'*22}\n"
         f"Action  : Field inspection required\n"
         f"Ref     : {zone_code}\n"
-        f"Verify  : gridhaat.live/{verify_code}"
+        f"Verify  : GridAid.live/{verify_code}"
     )
 
 # ── SEND FUNCTION ─────────────────────────────────────────
@@ -60,7 +60,7 @@ def send_alert_email(sector, mw, bdt, wastage_type, grid_line,
     email_body = build_email_body(sector, mw, bdt, wastage_type, grid_line,
                                   incharge, zone_code, verify_code, timestamp)
 
-    subject = f"⚡ GridHaat Alert — Sector {sector} | {wastage_type}"
+    subject = f"⚡ GridAid Alert — Sector {sector} | {wastage_type}"
 
     try:
         msg = MIMEMultipart("alternative")
