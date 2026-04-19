@@ -204,40 +204,41 @@ gridaid/
 
 ---
 
-## 📱 SMS Alert Setup
+## 📱 Email Alert Setup
 
-GridAid supports three SMS modes in priority order:
+GridAid supports two email modes in priority order:
 
-### Option A: Twilio (Recommended — 5 min setup)
+### 🔐 Credentials Setup
+### Option A: Live mode
+**Never commit real credentials to GitHub.**
 
-1. Sign up free at [twilio.com](https://twilio.com)
-2. Get: Account SID, Auth Token, Trial phone number
-3. Add your recipient's BD number as a verified caller
-
+1. Copy the example file:
 ```bash
-export TWILIO_SID="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-export TWILIO_TOKEN="your_auth_token"
-export TWILIO_FROM="+1XXXXXXXXXX"
-export DEMO_PHONE="+8801XXXXXXXXX"
-
-streamlit run dashboard_v2.py
+   cp .env.example .env
 ```
 
-### Option B: SSL Wireless BD (Production BD)
-
-```bash
-export SSL_API_KEY="your_ssl_api_key"
-export SSL_SID="your_ssl_sid"
-export DEMO_PHONE="+8801XXXXXXXXX"
+2. Edit `.env` with your values:
+```
+   EMAIL_SENDER=your_gmail@gmail.com
+   EMAIL_PASSWORD=your_gmail_app_password
+   DEMO_RECIPIENT_EMAIL=recipient@gmail.com
 ```
 
-Register at [sslwireless.com/sms-api](https://sslwireless.com/sms-api/)
+3. Generate a Gmail App Password:
+   - Go to **myaccount.google.com → Security → 2-Step Verification → App passwords**
+   - Create password for "Mail" → copy the 16-character code
+   - Paste into `EMAIL_PASSWORD`
 
-### Option C: Demo Mode (No credentials needed)
+**For Streamlit Cloud deployment:**
+Go to your app → **Settings → Secrets** → paste the same key-value pairs in TOML format.
+
+> Demo mode works without any credentials — the email content is shown on screen without sending.
+
+### Option CB: Demo Mode (No credentials needed)
 
 If no environment variables are set, GridAid runs in **demo mode** — the full SMS content is generated and displayed on screen exactly as it would be delivered. Verification hash still generates and matches dashboard.
 
-### SMS Format
+### email Format
 
 ```
 GridAid AI ALERT #C54F21
