@@ -1,13 +1,11 @@
 """
-GridHaat V2 — National Energy Intelligence Platform
+GridAid —  AI-Powered National Energy Intelligence Platform
 Enhanced competition demo with:
   • Live waste counter (JS, truly real-time)
   • Bangladesh map with animated pulsing anomaly pin
   • Real SMS via Twilio/SSL Wireless with verification hash
   • Full resolution workflow loop
   • Enhanced optimization simulator
-
-Run: streamlit run dashboard_v2.py
 """
 
 import streamlit as st
@@ -23,7 +21,7 @@ import time, random, hashlib, json, os, threading
 from bd_grid_data import GRID_ZONES, NATIONAL_WASTE_MW_PER_SEC, BDT_PER_KWH, CO2_KG_PER_KWH, WASTAGE_LABELS
 
 st.set_page_config(
-    page_title="GridHaat — National Energy Intelligence",
+    page_title="GridAid —  AI-Powered National Energy Intelligence Platform",
     page_icon="⚡", layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -272,8 +270,8 @@ def generate_anomaly(sector_name: str = None) -> dict:
 
 # ── SIDEBAR ────────────────────────────────────────────────────
 with st.sidebar:
-    st.markdown("## ⚡ GridHaat")
-    st.markdown("**National Energy Intelligence**")
+    st.markdown("## ⚡ GridAid")
+    st.markdown("**AI-Powered National Energy Intelligence Platform**")
     st.markdown("---")
     page = st.radio("", [
         "🏠  National Command Centre",
@@ -297,7 +295,7 @@ with st.sidebar:
 # PAGE 1 — NATIONAL COMMAND CENTRE
 # ══════════════════════════════════════════════════════════════
 if "Command" in page:
-    st.markdown("<h2 style='color:#F59E0B;margin-bottom:2px'>⚡ GridHaat — National Command Centre</h2>", unsafe_allow_html=True)
+    st.markdown("<h2 style='color:#F59E0B;margin-bottom:2px'>⚡ GridAid — National Command Centre</h2>", unsafe_allow_html=True)
     st.markdown("<p style='color:#94A3B8;font-size:13px;margin-bottom:12px'>Real-time energy intelligence across all Bangladesh divisions</p>", unsafe_allow_html=True)
 
     try:
@@ -739,15 +737,15 @@ elif "Simulator" in page:
         st.plotly_chart(fig, use_container_width=True)
 
         # Before / After Bangladesh
-        st.markdown('<div class="section-hdr">Before vs After GridHaat — national grid</div>', unsafe_allow_html=True)
+        st.markdown('<div class="section-hdr">Before vs After GridAid — national grid</div>', unsafe_allow_html=True)
         sectors_list = ["Industrial","Commercial","Residential","Rural","Grid loss"]
         before_vals  = [base_industrial, base_commercial, base_residential, base_rural, base_grid_loss]
         after_vals   = [base_industrial-rec_ind, base_commercial-rec_com,
                         base_residential-rec_res, base_rural-rec_rur, base_grid_loss-rec_grid]
         fig2 = go.Figure()
-        fig2.add_trace(go.Bar(name="Before GridHaat", x=sectors_list, y=before_vals,
+        fig2.add_trace(go.Bar(name="Before GridAid", x=sectors_list, y=before_vals,
                               marker_color="#EF4444"))
-        fig2.add_trace(go.Bar(name="After GridHaat", x=sectors_list, y=after_vals,
+        fig2.add_trace(go.Bar(name="After GridAid", x=sectors_list, y=after_vals,
                               marker_color="#22C55E"))
         fig2.update_layout(
             barmode="group", paper_bgcolor="#0D1B2A", plot_bgcolor="#050D18",
@@ -766,7 +764,7 @@ elif "AI Model" in page:
     try:
         df = pd.read_csv("data/bd_energy_scored.csv", parse_dates=["timestamp"])
     except:
-        st.error("Run generate_data.py + train_model.py in gridhaat_demo/ first.")
+        st.error("Run generate_data.py + train_model.py first.")
         st.stop()
 
     c1,c2,c3,c4 = st.columns(4)
@@ -841,7 +839,7 @@ elif "Government" in page:
 
     col_l,col_r = st.columns(2)
     with col_l:
-        st.markdown('<div class="section-hdr">What GridHaat delivers (built today)</div>', unsafe_allow_html=True)
+        st.markdown('<div class="section-hdr">What GridAid delivers (built today)</div>', unsafe_allow_html=True)
         items = [
             ("AI anomaly detection","Trained Isolation Forest model — production ready"),
             ("Real SMS alert system","Twilio/SSL Wireless integration — fires live alerts"),
