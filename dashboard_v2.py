@@ -1,13 +1,13 @@
 """
-GridAid —  AI-Powered National Energy Intelligence Platform
+GridAid — AI-Powered National Energy Intelligence Platform
 Enhanced competition demo with:
   • Live waste counter (JS, truly real-time)
   • Bangladesh map with animated pulsing anomaly pin
-  • Real SMS via Twilio/SSL Wireless with verification hash
+  • Real Email via Gmail SMTP with verification hash
   • Full resolution workflow loop
   • Enhanced optimization simulator
+Run: streamlit run dashboard_v2.py
 """
-
 import streamlit as st
 import streamlit.components.v1 as components
 import pandas as pd
@@ -21,7 +21,7 @@ import time, random, hashlib, json, os, threading
 from bd_grid_data import GRID_ZONES, NATIONAL_WASTE_MW_PER_SEC, BDT_PER_KWH, CO2_KG_PER_KWH, WASTAGE_LABELS
 
 st.set_page_config(
-    page_title="GridAid —  AI-Powered National Energy Intelligence Platform",
+    page_title="GridAid — National Energy Intelligence",
     page_icon="⚡", layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -33,35 +33,28 @@ st.markdown("""
 [data-testid="stSidebar"]{background:#0D1B2A}
 [data-testid="stHeader"]{background:transparent}
 .block-container{padding-top:0.5rem}
-
 .kpi{background:#0D1B2A;border-radius:12px;padding:14px 18px;
      border:1px solid #1E3A5C;text-align:center}
 .kpi-num{font-size:26px;font-weight:700}
 .kpi-lbl{font-size:11px;color:#94A3B8;margin-top:3px}
-
 .alert-card{background:#1A0808;border-left:4px solid #EF4444;
             border-radius:8px;padding:10px 14px;margin:5px 0}
 .alert-title{color:#FCA5A5;font-weight:600;font-size:13px}
 .alert-sub{color:#94A3B8;font-size:11px;margin-top:2px}
-
 .resolved-card{background:#081A10;border-left:4px solid #22C55E;
                border-radius:8px;padding:10px 14px;margin:5px 0}
-
-.sms-preview{background:#1A1A0A;border:1px solid #F59E0B;border-radius:8px;
-             padding:14px;font-family:monospace;font-size:12px;
-             color:#FCD34D;white-space:pre-line;line-height:1.7}
-
+.email-preview{background:#1A1A0A;border:1px solid #F59E0B;border-radius:8px;
+               padding:14px;font-family:monospace;font-size:12px;
+               color:#FCD34D;white-space:pre-line;line-height:1.7}
 .verify-badge{background:#0A1A0A;border:1px solid #22C55E;border-radius:6px;
               padding:6px 14px;display:inline-block;font-family:monospace;
               font-size:14px;color:#86EFAC;font-weight:700}
-
 .step-active{background:#0D2A1A;border:1.5px solid #22C55E;border-radius:8px;
              padding:10px 14px;margin:4px 0}
 .step-done{background:#071510;border:0.5px solid #1A3A1A;border-radius:8px;
            padding:10px 14px;margin:4px 0;opacity:0.7}
 .step-pending{background:#07111E;border:0.5px solid #1E3A5C;border-radius:8px;
               padding:8px 14px;margin:4px 0;opacity:0.5}
-
 .section-hdr{color:#F59E0B;font-size:16px;font-weight:600;
              padding-bottom:6px;margin:12px 0 8px;
              border-bottom:1px solid #1E3A5C}
@@ -71,18 +64,17 @@ st.markdown("""
 # ── SESSION STATE INIT ────────────────────────────────────────
 def init_state():
     defaults = {
-        "anomalies":        [],     # list of detected anomaly dicts
-        "active_anomaly":   None,   # current anomaly being resolved
-        "sms_log":          [],     # all SMS records
-        "resolution_step":  0,      # 0=none 1=detected 2=sms_sent 3=ack 4=resolved
+        "anomalies":        [],
+        "active_anomaly":   None,
+        "email_log":        [],     # renamed from sms_log
+        "resolution_step":  0,
         "resolution_timer": None,
         "session_start":    time.time(),
         "trigger_pending":  False,
     }
-    for k,v in defaults.items():
+    for k, v in defaults.items():
         if k not in st.session_state:
             st.session_state[k] = v
-
 init_state()
 
 # ── LIVE WASTE COUNTER (JavaScript — truly real-time) ─────────
@@ -143,12 +135,10 @@ def build_bd_map(active_anomaly=None, all_anomalies=None):
         tiles="CartoDB dark_matter",
         prefer_canvas=True,
     )
-
-    # Normal zone markers
     for name, zone in GRID_ZONES.items():
         is_active = (active_anomaly and active_anomaly.get("sector") == name)
         if is_active:
-            continue  # drawn separately below
+            continue
         folium.CircleMarker(
             location=[zone["lat"], zone["lon"]],
             radius=7, color=zone["icon_color"],
@@ -165,8 +155,6 @@ def build_bd_map(active_anomaly=None, all_anomalies=None):
                 icon_size=(160, 14),
             )
         ).add_to(m)
-
-    # Pulsing anomaly marker
     if active_anomaly:
         az = GRID_ZONES.get(active_anomaly["sector"], {})
         lat, lon = az.get("lat", 23.8), az.get("lon", 90.3)
@@ -192,8 +180,6 @@ def build_bd_map(active_anomaly=None, all_anomalies=None):
             icon=folium.DivIcon(html=pulse_html, icon_size=(24,24), icon_anchor=(12,12)),
             tooltip=f"⚠️ ANOMALY: {active_anomaly['sector']}",
         ).add_to(m)
-
-        # Popup with full detail
         popup_html = f"""
 <div style='background:#1A0808;padding:12px;border-radius:8px;
             font-family:Arial;min-width:220px;border:1px solid #EF4444'>
@@ -214,8 +200,6 @@ def build_bd_map(active_anomaly=None, all_anomalies=None):
             popup=folium.Popup(popup_html, max_width=260),
             icon=folium.DivIcon(html="", icon_size=(0,0)),
         ).add_to(m)
-
-    # Past anomalies (faded)
     if all_anomalies:
         for a in (all_anomalies or []):
             if active_anomaly and a.get("id") == active_anomaly.get("id"):
@@ -228,14 +212,13 @@ def build_bd_map(active_anomaly=None, all_anomalies=None):
                     fill_color="#22C55E", fill_opacity=0.4, weight=1,
                     tooltip=f"✓ Resolved: {a['sector']}",
                 ).add_to(m)
-
     return m
 
 # ── ANOMALY GENERATOR ─────────────────────────────────────────
 def generate_anomaly(sector_name: str = None) -> dict:
     if sector_name is None or sector_name not in GRID_ZONES:
         sector_name = random.choice(list(GRID_ZONES.keys()))
-    zone = GRID_ZONES[sector_name]
+    zone    = GRID_ZONES[sector_name]
     base_mw = zone["base_mw"]
     mw      = round(random.uniform(0.12, 0.22) * base_mw, 1)
     bdt     = mw * 1000 * BDT_PER_KWH * random.uniform(0.5, 1.0)
@@ -246,36 +229,35 @@ def generate_anomaly(sector_name: str = None) -> dict:
         f"{sector_name}:{mw:.1f}:{int(ts_raw)}".encode()
     ).hexdigest()[:6].upper()
     score   = round(random.uniform(78, 97), 1)
-
     return {
-        "id":           f"GH-{v_code}",
-        "sector":       sector_name,
-        "division":     zone["division"],
-        "grid_line":    zone["grid_line"],
-        "zone_code":    zone["zone_code"],
-        "incharge":     zone["incharge_name"],
-        "incharge_title": zone["incharge_title"],
-        "wastage_type": zone["wastage_type"],
-        "mw":           mw,
-        "bdt":          round(bdt, 0),
-        "co2_kg":       round(co2, 1),
-        "score":        score,
-        "verify_code":  v_code,
-        "timestamp":    ts_str,
-        "ts_raw":       ts_raw,
-        "sms_sent":     False,
-        "resolved":     False,
+        "id":                  f"GA-{v_code}",   # GA = GridAid
+        "sector":              sector_name,
+        "division":            zone["division"],
+        "grid_line":           zone["grid_line"],
+        "zone_code":           zone["zone_code"],
+        "incharge":            zone["incharge_name"],
+        "incharge_title":      zone["incharge_title"],
+        "wastage_type":        zone["wastage_type"],
+        "mw":                  mw,
+        "bdt":                 round(bdt, 0),
+        "co2_kg":              round(co2, 1),
+        "score":               score,
+        "verify_code":         v_code,
+        "timestamp":           ts_str,
+        "ts_raw":              ts_raw,
+        "email_sent":          False,   # renamed from sms_sent
+        "resolved":            False,
         "resolution_time_sec": None,
     }
 
 # ── SIDEBAR ────────────────────────────────────────────────────
 with st.sidebar:
     st.markdown("## ⚡ GridAid")
-    st.markdown("**AI-Powered National Energy Intelligence Platform**")
+    st.markdown("**AI-Powered National Energy Intelligence**")
     st.markdown("---")
     page = st.radio("", [
         "🏠  National Command Centre",
-        "🔴  Live Anomaly + SMS Demo",
+        "🔴  Live Anomaly + Email Demo",
         "🔧  Resolution Workflow",
         "🎛️  Optimization Simulator",
         "📊  AI Model Insights",
@@ -288,8 +270,7 @@ with st.sidebar:
     st.markdown("🟢 AI engine: **active**")
     st.markdown("🟢 LoRaWAN: **connected**")
     st.markdown("🟡 BPDB API: **pilot pending**")
-    sms_mode = "🟢 Twilio" if os.environ.get("TWILIO_SID") else "🟡 Demo mode"
-    st.markdown(f"SMS gateway: **{sms_mode}**")
+    st.markdown("🟢 Email gateway: **Gmail SMTP**")
 
 # ══════════════════════════════════════════════════════════════
 # PAGE 1 — NATIONAL COMMAND CENTRE
@@ -297,15 +278,12 @@ with st.sidebar:
 if "Command" in page:
     st.markdown("<h2 style='color:#F59E0B;margin-bottom:2px'>⚡ GridAid — National Command Centre</h2>", unsafe_allow_html=True)
     st.markdown("<p style='color:#94A3B8;font-size:13px;margin-bottom:12px'>Real-time energy intelligence across all Bangladesh divisions</p>", unsafe_allow_html=True)
-
     try:
         df = pd.read_csv("data/bd_energy_scored.csv", parse_dates=["timestamp"])
         data_loaded = True
     except:
         data_loaded = False
         df = pd.DataFrame()
-
-    # KPIs
     c1,c2,c3,c4,c5 = st.columns(5)
     kpis = [
         ("3,400+ MW","national capacity lost daily","#EF4444"),
@@ -317,16 +295,13 @@ if "Command" in page:
     for col,(num,lbl,c) in zip([c1,c2,c3,c4,c5],kpis):
         with col:
             st.markdown(f'<div class="kpi"><div class="kpi-num" style="color:{c}">{num}</div><div class="kpi-lbl">{lbl}</div></div>', unsafe_allow_html=True)
-
     st.markdown("")
     col_map, col_right = st.columns([1.4,1])
-
     with col_map:
         st.markdown('<div class="section-hdr">Bangladesh grid — live division map</div>', unsafe_allow_html=True)
         active = next((a for a in st.session_state["anomalies"] if not a.get("resolved")), None)
         bd_map = build_bd_map(active_anomaly=active, all_anomalies=st.session_state["anomalies"])
         st_folium(bd_map, width=None, height=450)
-
     with col_right:
         st.markdown('<div class="section-hdr">Recent anomaly alerts</div>', unsafe_allow_html=True)
         recents = sorted(st.session_state["anomalies"], key=lambda x: x["ts_raw"], reverse=True)[:6]
@@ -343,8 +318,6 @@ if "Command" in page:
     {a['timestamp']} · Verify: <span style='color:#22C55E;font-weight:600'>#{a['verify_code']}</span>
   </div>
 </div>""", unsafe_allow_html=True)
-
-        # Waste breakdown chart
         if data_loaded and len(df) > 0:
             st.markdown('<div class="section-hdr">Wastage by division</div>', unsafe_allow_html=True)
             div_w = df.groupby("division")["wastage_mw"].sum().sort_values(ascending=True).reset_index()
@@ -364,112 +337,90 @@ if "Command" in page:
             st.plotly_chart(fig, use_container_width=True)
 
 # ══════════════════════════════════════════════════════════════
-# PAGE 2 — LIVE ANOMALY + SMS DEMO
+# PAGE 2 — LIVE ANOMALY + EMAIL DEMO
 # ══════════════════════════════════════════════════════════════
 elif "Anomaly" in page:
-    st.markdown("<h2 style='color:#EF4444;margin-bottom:2px'>🔴 Live Anomaly Detection + SMS Alert Demo</h2>", unsafe_allow_html=True)
+    st.markdown("<h2 style='color:#EF4444;margin-bottom:2px'>🔴 Live Anomaly Detection + Email Alert Demo</h2>", unsafe_allow_html=True)
     st.markdown("<p style='color:#94A3B8;font-size:13px'>Watch the full detection → locate → alert → notify cycle in real time.</p>", unsafe_allow_html=True)
-
-    col_ctrl, col_live = st.columns([1,1.2])
-
+    col_ctrl, col_live = st.columns([1, 1.2])
     with col_ctrl:
         st.markdown('<div class="section-hdr">Trigger live anomaly</div>', unsafe_allow_html=True)
-
         sector_choice = st.selectbox(
             "Select sector to simulate (or leave random)",
             ["🎲 Random sector"] + list(GRID_ZONES.keys())
         )
-        phone_input = st.text_input(
-            "Incharge phone number (receives real SMS)",
-            value="+8801639097885",
-            help="Enter a real number. Bangladeshi format: +8801639097885"
+        email_input = st.text_input(
+            "Incharge email (receives real email alert)",
+            value="afnanohi01817@gmail.com",
+            help="Enter a real email address. Format: demo@domain.com"
         )
-        st.caption("💡 If Twilio credentials are not set, demo mode shows the SMS content without sending.")
-
-        if st.button("🔴 TRIGGER ANOMALY & SEND SMS ALERT", type="primary", use_container_width=True):
+        st.caption("💡 Email will be sent via Gmail SMTP to the address above.")
+        if st.button("🔴 TRIGGER ANOMALY & SEND EMAIL ALERT", type="primary", use_container_width=True):
             chosen = None if sector_choice.startswith("🎲") else sector_choice
             anomaly = generate_anomaly(chosen)
             st.session_state["active_anomaly"] = anomaly
             st.session_state["anomalies"].append(anomaly)
             st.session_state["resolution_step"] = 1
             st.session_state["trigger_pending"] = True
-            st.session_state["pending_phone"] = phone_input
+            st.session_state["pending_email"] = email_input
             st.rerun()
-
-        # Show SMS if recently triggered
         if st.session_state.get("trigger_pending") and st.session_state.get("active_anomaly"):
             a = st.session_state["active_anomaly"]
-            phone = st.session_state.get("pending_phone", "+8801639097885")
-
+            email = st.session_state.get("pending_email", "demo@domain.com")
             with st.spinner("AI model detecting anomaly..."):
                 time.sleep(0.8)
-
             st.success(f"**Anomaly detected!** Score: {a['score']}/100")
-
             with st.spinner("Generating verification hash..."):
                 time.sleep(0.4)
-
             st.markdown(f"""
 <div style='background:#071010;border:1px solid #0D9488;border-radius:8px;
             padding:10px 14px;margin:8px 0'>
 <div style='color:#5EEAD4;font-size:11px;font-weight:600'>VERIFICATION HASH (generated live)</div>
 <div style='color:#22C55E;font-size:20px;font-weight:700;font-family:monospace'>#{a['verify_code']}</div>
 <div style='color:#94A3B8;font-size:10px'>SHA-256({a['sector']}:{a['mw']:.1f}:{int(a['ts_raw'])})[:6]</div>
-<div style='color:#94A3B8;font-size:10px;margin-top:4px'>This same code will appear in the SMS — proving it's live.</div>
+<div style='color:#94A3B8;font-size:10px;margin-top:4px'>This same code will appear in the email — proving it's live.</div>
 </div>""", unsafe_allow_html=True)
-
-            with st.spinner(f"Sending SMS to {phone}..."):
-                from sms_service import send_alert_sms, build_sms
+            with st.spinner(f"Sending email to {email}..."):
+                from sms_service import send_alert_email, build_email_body
                 zone = GRID_ZONES[a["sector"]]
-                result = send_alert_sms(
+                result = send_alert_email(
                     sector=a["sector"], mw=a["mw"], bdt=a["bdt"],
                     wastage_type=a["wastage_type"],
                     grid_line=a["grid_line"], incharge=a["incharge"],
                     zone_code=a["zone_code"],
                     verify_code=a["verify_code"],
                     timestamp=a["timestamp"],
-                    recipient=phone,
+                    recipient_email=email,
                 )
-
-            a["sms_sent"] = True
-            a["sms_result"] = result
+            a["email_sent"] = True
+            a["email_result"] = result
             st.session_state["trigger_pending"] = False
-
-            mode_label = {
-                "twilio":      "✅ SENT via Twilio (real SMS delivered)",
-                "ssl_wireless":"✅ SENT via SSL Wireless BD",
-                "demo":        "📱 DEMO MODE — SMS content ready (add Twilio key to send for real)",
-            }
-            st.markdown(f"<div style='color:#22C55E;font-weight:600;font-size:13px'>{mode_label.get(result['mode'],'')}</div>", unsafe_allow_html=True)
-
+            if result["success"]:
+                st.markdown("<div style='color:#22C55E;font-weight:600;font-size:13px'>✅ Email sent via Gmail SMTP</div>", unsafe_allow_html=True)
+            else:
+                st.markdown(f"<div style='color:#EF4444;font-weight:600;font-size:13px'>❌ {result['error']}</div>", unsafe_allow_html=True)
     with col_live:
         a = st.session_state.get("active_anomaly")
         if a:
             zone = GRID_ZONES.get(a["sector"], {})
             st.markdown('<div class="section-hdr">📍 Anomaly location — Bangladesh grid</div>', unsafe_allow_html=True)
-
-            # Mini map showing just this zone
             mini_map = build_bd_map(active_anomaly=a)
             st_folium(mini_map, width=None, height=320)
-
-            # SMS preview
-            st.markdown('<div class="section-hdr">📱 SMS message sent to incharge</div>', unsafe_allow_html=True)
-            from sms_service import build_sms
-            sms_text = build_sms(
+            # Email preview (renamed from SMS preview)
+            st.markdown('<div class="section-hdr">📧 Email alert sent to incharge</div>', unsafe_allow_html=True)
+            from sms_service import build_email_body
+            email_text = build_email_body(
                 a["sector"], a["mw"], a["bdt"], a["wastage_type"],
                 a["grid_line"], a["incharge"], a["zone_code"],
                 a["verify_code"], a["timestamp"]
             )
-            st.markdown(f'<div class="sms-preview">{sms_text}</div>', unsafe_allow_html=True)
-
+            st.markdown(f'<div class="email-preview">{email_text}</div>', unsafe_allow_html=True)
             st.markdown(f"""
 <div style='margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap'>
 <span style='color:#94A3B8;font-size:11px'>Verify code:</span>
 <span class="verify-badge">#{a['verify_code']}</span>
-<span style='color:#94A3B8;font-size:11px;margin-left:4px'>— appears in SMS & dashboard simultaneously</span>
+<span style='color:#94A3B8;font-size:11px;margin-left:4px'>— appears in email & dashboard simultaneously</span>
 </div>""", unsafe_allow_html=True)
-
-            # Incharge details
             st.markdown(f"""
 <div style='background:#0A1828;border:1px solid #1E3A5C;border-radius:8px;
             padding:12px;margin-top:10px;font-size:12px'>
@@ -479,10 +430,8 @@ elif "Anomaly" in page:
 <div style='color:#CBD5E1'>🔌 Substation: {zone.get('substation','')} (Grid {a['grid_line']})</div>
 <div style='color:#CBD5E1'>🏷️ Zone ref: {a['zone_code']}</div>
 </div>""", unsafe_allow_html=True)
-
             if st.button("➡️ Go to Resolution Workflow", use_container_width=True):
                 st.session_state["resolution_step"] = 2
-
         else:
             st.markdown("""
 <div style='background:#0A1828;border:1px solid #1E3A5C;border-radius:12px;
@@ -498,48 +447,38 @@ elif "Anomaly" in page:
 elif "Resolution" in page:
     st.markdown("<h2 style='color:#22C55E;margin-bottom:2px'>🔧 Anomaly Resolution Centre</h2>", unsafe_allow_html=True)
     st.markdown("<p style='color:#94A3B8;font-size:13px'>Full detection → notify → investigate → resolve loop. The system closes itself.</p>", unsafe_allow_html=True)
-
-    a = st.session_state.get("active_anomaly")
+    a    = st.session_state.get("active_anomaly")
     step = st.session_state.get("resolution_step", 0)
-
     if not a:
         st.info("No active anomaly. Go to Live Anomaly Demo to trigger one first.")
     else:
         zone = GRID_ZONES.get(a["sector"], {})
         col_flow, col_detail = st.columns([1, 1.4])
-
         with col_flow:
             st.markdown('<div class="section-hdr">Resolution workflow</div>', unsafe_allow_html=True)
-
             steps = [
-                (1, "🔴 Anomaly detected",    f"AI score {a['score']}/100 — {a['mw']:.1f} MW loss"),
-                (2, "📱 SMS alert sent",       f"#{a['verify_code']} → {zone.get('incharge_name','')}"),
-                (3, "👤 Incharge acknowledged",f"Field inspection initiated"),
-                (4, "🔍 Investigation active", f"On-site team dispatched"),
-                (5, "✅ Anomaly resolved",     f"Issue corrected — MW recovered"),
+                (1, "🔴 Anomaly detected",      f"AI score {a['score']}/100 — {a['mw']:.1f} MW loss"),
+                (2, "📧 Email alert sent",       f"#{a['verify_code']} → {zone.get('incharge_name','')}"),
+                (3, "👤 Incharge acknowledged",  f"Field inspection initiated"),
+                (4, "🔍 Investigation active",   f"On-site team dispatched"),
+                (5, "✅ Anomaly resolved",        f"Issue corrected — MW recovered"),
             ]
-
             for s_num, s_title, s_sub in steps:
                 if s_num < step:
-                    cls = "step-done"
-                    icon_c = "#22C55E"
+                    cls = "step-done"; icon_c = "#22C55E"
                 elif s_num == step:
-                    cls = "step-active"
-                    icon_c = "#F59E0B"
+                    cls = "step-active"; icon_c = "#F59E0B"
                 else:
-                    cls = "step-pending"
-                    icon_c = "#475569"
+                    cls = "step-pending"; icon_c = "#475569"
                 st.markdown(f"""
 <div class="{cls}">
   <div style='color:{icon_c};font-weight:600;font-size:13px'>{s_title}</div>
   <div style='color:#94A3B8;font-size:11px;margin-top:2px'>{s_sub}</div>
 </div>""", unsafe_allow_html=True)
-
             st.markdown("")
-
             if step < 5:
                 btn_labels = {
-                    1: "📱 Confirm SMS Sent",
+                    1: "📧 Confirm Email Sent",
                     2: "👤 Incharge Acknowledged",
                     3: "🔍 Mark Under Investigation",
                     4: "✅ Mark as Resolved",
@@ -553,9 +492,9 @@ elif "Resolution" in page:
                         st.session_state["resolution_step"] = step + 1
                         st.rerun()
             else:
-                elapsed = a.get("resolution_time_sec", 0)
+                elapsed      = a.get("resolution_time_sec", 0)
                 mw_recovered = a["mw"] * 0.85
-                bdt_saved = mw_recovered * 1000 * BDT_PER_KWH * (elapsed / 3600)
+                bdt_saved    = mw_recovered * 1000 * BDT_PER_KWH * (elapsed / 3600)
                 st.markdown(f"""
 <div style='background:#0A1A0A;border:2px solid #22C55E;border-radius:12px;
             padding:16px;text-align:center;margin-top:8px'>
@@ -573,19 +512,14 @@ elif "Resolution" in page:
                     st.session_state["active_anomaly"] = None
                     st.session_state["resolution_step"] = 0
                     st.rerun()
-
         with col_detail:
             if step >= 1:
                 st.markdown('<div class="section-hdr">Active anomaly details</div>', unsafe_allow_html=True)
-                elapsed_now = int(time.time() - a["ts_raw"])
-                ongoing_mw_loss = a["mw"] * elapsed_now / 3600
-                ongoing_bdt     = ongoing_mw_loss * 1000 * BDT_PER_KWH
-
+                elapsed_now    = int(time.time() - a["ts_raw"])
                 c1,c2,c3 = st.columns(3)
                 c1.metric("MW being wasted", f"{a['mw']:.1f}", f"Score: {a['score']}/100")
-                c2.metric("BDT per hour",  f"৳{a['mw']*1000*BDT_PER_KWH:,.0f}")
+                c2.metric("BDT per hour", f"৳{a['mw']*1000*BDT_PER_KWH:,.0f}")
                 c3.metric("Time elapsed", f"{elapsed_now//60}m {elapsed_now%60}s")
-
                 st.markdown(f"""
 <div style='background:#0A1828;border:1px solid #1E3A5C;border-radius:8px;
             padding:14px;margin:8px 0'>
@@ -604,8 +538,6 @@ elif "Resolution" in page:
      <div style='color:#22C55E;font-weight:700;font-family:monospace'>#{a['verify_code']}</div></div>
 </div>
 </div>""", unsafe_allow_html=True)
-
-                # Ongoing cost meter
                 st.markdown('<div class="section-hdr">💸 Cost accumulating while unresolved</div>', unsafe_allow_html=True)
                 components.html(f"""
 <style>
@@ -635,8 +567,6 @@ setInterval(()=>{{
 }},200);
 </script>
 """, height=80)
-
-            # All resolved anomalies
             resolved = [x for x in st.session_state["anomalies"] if x.get("resolved")]
             if resolved:
                 st.markdown('<div class="section-hdr">✅ Resolved anomalies this session</div>', unsafe_allow_html=True)
@@ -652,54 +582,45 @@ setInterval(()=>{{
 </div>""", unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════════════════════
-# PAGE 4 — OPTIMIZATION SIMULATOR (enhanced)
+# PAGE 4 — OPTIMIZATION SIMULATOR
 # ══════════════════════════════════════════════════════════════
 elif "Simulator" in page:
     st.markdown("<h2 style='color:#22C55E'>🎛️ National Optimization Simulator</h2>", unsafe_allow_html=True)
     st.markdown("<p style='color:#94A3B8;font-size:13px'>Drag sliders. Watch Bangladesh's energy crisis shrink in real time.</p>", unsafe_allow_html=True)
-
     col_sl, col_res = st.columns([1, 1.5])
-
     with col_sl:
         st.markdown('<div class="section-hdr">Layer 1 — Grid intelligence</div>', unsafe_allow_html=True)
-        ami_pct      = st.slider("AMI rollout coverage (%)", 0,100,20)
-        ai_grid_pct  = st.slider("AI fault detection on lines (%)", 0,100,25)
-
+        ami_pct     = st.slider("AMI rollout coverage (%)", 0,100,20)
+        ai_grid_pct = st.slider("AI fault detection on lines (%)", 0,100,25)
         st.markdown('<div class="section-hdr">Layer 2 — Demand intelligence</div>', unsafe_allow_html=True)
-        fems_pct     = st.slider("Factories with FEMS + VFDs (%)", 0,100,30)
-        bms_pct      = st.slider("Commercial buildings with BMS (%)", 0,100,20)
-        smart_m_pct  = st.slider("Urban households smart metered (%)", 0,100,40)
-        rural_pct    = st.slider("Rural micro-grids monitored (%)", 0,100,15)
-
+        fems_pct    = st.slider("Factories with FEMS + VFDs (%)", 0,100,30)
+        bms_pct     = st.slider("Commercial buildings with BMS (%)", 0,100,20)
+        smart_m_pct = st.slider("Urban households smart metered (%)", 0,100,40)
+        rural_pct   = st.slider("Rural micro-grids monitored (%)", 0,100,15)
         st.markdown('<div class="section-hdr">Efficiency assumptions</div>', unsafe_allow_html=True)
-        fems_eff   = st.slider("Industrial energy savings per factory (%)", 10,50,32)
-        bms_eff    = st.slider("Commercial building savings (%)", 10,40,27)
-        res_eff    = st.slider("Residential behavioral reduction (%)", 5,25,16)
-        grid_eff   = st.slider("Transmission loss cut per % AMI (%)", 5,30,18)
-
+        fems_eff  = st.slider("Industrial energy savings per factory (%)", 10,50,32)
+        bms_eff   = st.slider("Commercial building savings (%)", 10,40,27)
+        res_eff   = st.slider("Residential behavioral reduction (%)", 5,25,16)
+        grid_eff  = st.slider("Transmission loss cut per % AMI (%)", 5,30,18)
     with col_res:
-        # Baseline MWs per sector (approximate national)
-        base_industrial  = 1800   # MW wastage
+        base_industrial  = 1800
         base_commercial  = 1200
         base_residential = 800
         base_rural       = 600
-        base_grid_loss   = 2000   # transmission system loss
-
-        rec_ind  = base_industrial  * (fems_pct/100)  * (fems_eff/100)
-        rec_com  = base_commercial  * (bms_pct/100)   * (bms_eff/100)
-        rec_res  = base_residential * (smart_m_pct/100)*(res_eff/100)
+        base_grid_loss   = 2000
+        rec_ind  = base_industrial  * (fems_pct/100)   * (fems_eff/100)
+        rec_com  = base_commercial  * (bms_pct/100)    * (bms_eff/100)
+        rec_res  = base_residential * (smart_m_pct/100)* (res_eff/100)
         rec_rur  = base_rural       * (rural_pct/100)  * 0.25
         rec_grid = base_grid_loss   * (ami_pct/100)    * (grid_eff/100) + \
                    base_grid_loss   * (ai_grid_pct/100) * 0.08
-        total_rec = rec_ind + rec_com + rec_res + rec_rur + rec_grid
+        total_rec  = rec_ind + rec_com + rec_res + rec_rur + rec_grid
         base_total = base_industrial + base_commercial + base_residential + base_rural + base_grid_loss
         pct_rec    = min(total_rec / base_total * 100, 100)
-
         bdt_yr     = total_rec * 365 * 24 * 1000 * BDT_PER_KWH
         co2_yr     = total_rec * 365 * 24 * 1000 * CO2_KG_PER_KWH
         power_plants = total_rec / 500
-        fuel_saved = total_rec * 365 * 24 * 1000 * 0.28
-
+        fuel_saved   = total_rec * 365 * 24 * 1000 * 0.28
         st.markdown('<div class="section-hdr">Projected national impact</div>', unsafe_allow_html=True)
         r1,r2 = st.columns(2)
         r1.metric("Energy recovered/day", f"{total_rec:.0f} MW", f"{pct_rec:.1f}% of total loss")
@@ -707,8 +628,6 @@ elif "Simulator" in page:
         r3,r4 = st.columns(2)
         r3.metric("CO₂ avoided/year", f"{co2_yr/1e6:.1f}M kg")
         r4.metric("Fuel import saved", f"{fuel_saved/1e6:.1f}M litres/yr")
-
-        # Power plant equivalents — the wow number
         st.markdown(f"""
 <div style='background:#081A08;border:2px solid #22C55E;border-radius:12px;
             padding:16px;margin:12px 0;text-align:center'>
@@ -716,8 +635,6 @@ elif "Simulator" in page:
 <div style='color:#86EFAC;font-size:14px;font-weight:600'>power plant equivalents recovered</div>
 <div style='color:#94A3B8;font-size:12px;margin-top:4px'>Without building a single new plant. Without importing a single litre of extra fuel.</div>
 </div>""", unsafe_allow_html=True)
-
-        # Waterfall breakdown
         fig = go.Figure(go.Waterfall(
             orientation="v", measure=["relative"]*5+["total"],
             x=["Industrial\nFEMS","Commercial\nBMS","Residential\nMeters","Rural\nSolar","Grid\nAI/AMI","Total\nRecovered"],
@@ -735,18 +652,14 @@ elif "Simulator" in page:
             margin=dict(t=20,b=0), showlegend=False,
         )
         st.plotly_chart(fig, use_container_width=True)
-
-        # Before / After Bangladesh
         st.markdown('<div class="section-hdr">Before vs After GridAid — national grid</div>', unsafe_allow_html=True)
         sectors_list = ["Industrial","Commercial","Residential","Rural","Grid loss"]
         before_vals  = [base_industrial, base_commercial, base_residential, base_rural, base_grid_loss]
         after_vals   = [base_industrial-rec_ind, base_commercial-rec_com,
                         base_residential-rec_res, base_rural-rec_rur, base_grid_loss-rec_grid]
         fig2 = go.Figure()
-        fig2.add_trace(go.Bar(name="Before GridAid", x=sectors_list, y=before_vals,
-                              marker_color="#EF4444"))
-        fig2.add_trace(go.Bar(name="After GridAid", x=sectors_list, y=after_vals,
-                              marker_color="#22C55E"))
+        fig2.add_trace(go.Bar(name="Before GridAid", x=sectors_list, y=before_vals, marker_color="#EF4444"))
+        fig2.add_trace(go.Bar(name="After GridAid",  x=sectors_list, y=after_vals,  marker_color="#22C55E"))
         fig2.update_layout(
             barmode="group", paper_bgcolor="#0D1B2A", plot_bgcolor="#050D18",
             font_color="#94A3B8", height=280,
@@ -766,34 +679,28 @@ elif "AI Model" in page:
     except:
         st.error("Run generate_data.py + train_model.py first.")
         st.stop()
-
     c1,c2,c3,c4 = st.columns(4)
-    c1.metric("Model", "Isolation Forest")
-    c2.metric("Precision", "81%")
-    c3.metric("Recall",    "76%")
-    c4.metric("F1 score",  "0.78")
-
-    sel = st.selectbox("Select sector", df["sector"].unique())
+    c1.metric("Model","Isolation Forest")
+    c2.metric("Precision","81%")
+    c3.metric("Recall","76%")
+    c4.metric("F1 score","0.78")
+    sel    = st.selectbox("Select sector", df["sector"].unique())
     sec_df = df[df["sector"]==sel]
-
-    # Hourly pattern
     col_a, col_b = st.columns(2)
     with col_a:
         st.markdown('<div class="section-hdr">Hourly consumption pattern</div>', unsafe_allow_html=True)
-        hn = sec_df[sec_df["is_wastage_event"]==False].groupby("hour")["consumption_mw"].mean()
-        hw = sec_df[sec_df["is_wastage_event"]==True ].groupby("hour")["consumption_mw"].mean()
+        hn  = sec_df[sec_df["is_wastage_event"]==False].groupby("hour")["consumption_mw"].mean()
+        hw  = sec_df[sec_df["is_wastage_event"]==True ].groupby("hour")["consumption_mw"].mean()
         fig = go.Figure()
-        fig.add_trace(go.Scatter(x=hn.index,y=hn.values,name="Normal",line=dict(color="#22C55E",width=2.5)))
+        fig.add_trace(go.Scatter(x=hn.index,y=hn.values,name="Normal", line=dict(color="#22C55E",width=2.5)))
         fig.add_trace(go.Scatter(x=hw.index,y=hw.values,name="Wastage",line=dict(color="#EF4444",width=2.5,dash="dot")))
         fig.update_layout(paper_bgcolor="#0D1B2A",plot_bgcolor="#050D18",font_color="#94A3B8",
                           height=280,xaxis=dict(title="Hour",gridcolor="#1E3A5C"),
-                          yaxis=dict(title="Avg MW",gridcolor="#1E3A5C"),
-                          margin=dict(t=10))
+                          yaxis=dict(title="Avg MW",gridcolor="#1E3A5C"),margin=dict(t=10))
         st.plotly_chart(fig,use_container_width=True)
-
     with col_b:
         st.markdown('<div class="section-hdr">Anomaly score — last 14 days</div>', unsafe_allow_html=True)
-        rec = sec_df.tail(14*24)
+        rec  = sec_df.tail(14*24)
         anom = rec[rec["is_anomaly"]==1]
         fig2 = go.Figure()
         fig2.add_trace(go.Scatter(x=rec["timestamp"],y=rec["anomaly_score"],
@@ -811,13 +718,11 @@ elif "AI Model" in page:
                            yaxis=dict(title="Score (0-100)",gridcolor="#1E3A5C"),
                            showlegend=False,margin=dict(t=10))
         st.plotly_chart(fig2,use_container_width=True)
-
-    # Heatmap by hour × day
     st.markdown('<div class="section-hdr">Wastage heatmap — hour of day × day of week</div>', unsafe_allow_html=True)
-    heat = sec_df[sec_df["is_wastage_event"]==True].groupby(["hour","day_of_week"])["wastage_mw"].sum().reset_index()
+    heat     = sec_df[sec_df["is_wastage_event"]==True].groupby(["hour","day_of_week"])["wastage_mw"].sum().reset_index()
     heat_piv = heat.pivot(index="hour", columns="day_of_week", values="wastage_mw").fillna(0)
-    days = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"]
-    fig3 = go.Figure(go.Heatmap(
+    days     = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"]
+    fig3     = go.Figure(go.Heatmap(
         z=heat_piv.values, x=[days[d] for d in heat_piv.columns],
         y=[f"{h:02d}:00" for h in heat_piv.index],
         colorscale=[[0,"#050D18"],[0.5,"#854F0B"],[1,"#EF4444"]],
@@ -836,17 +741,16 @@ elif "AI Model" in page:
 elif "Government" in page:
     st.markdown("<h2 style='color:#94A3B8'>📋 Government Adoption Brief</h2>", unsafe_allow_html=True)
     st.success("✅ **Technology stack is operational.** This demo runs on a working AI model. What we need from government is data access — not more R&D.")
-
-    col_l,col_r = st.columns(2)
+    col_l, col_r = st.columns(2)
     with col_l:
         st.markdown('<div class="section-hdr">What GridAid delivers (built today)</div>', unsafe_allow_html=True)
         items = [
-            ("AI anomaly detection","Trained Isolation Forest model — production ready"),
-            ("Real SMS alert system","Twilio/SSL Wireless integration — fires live alerts"),
+            ("AI anomaly detection",    "Trained Isolation Forest model — production ready"),
+            ("Real email alert system", "Gmail SMTP integration — fires live alerts"),
             ("Bangladesh grid database","9 zones, incharge registry, grid line mapping"),
-            ("National dashboard","Real-time wastage KPIs + division heatmap"),
-            ("Resolution workflow","Full detect → notify → investigate → resolve loop"),
-            ("Optimization simulator","Policy scenario modelling with MW/BDT/CO₂ output"),
+            ("National dashboard",      "Real-time wastage KPIs + division heatmap"),
+            ("Resolution workflow",     "Full detect → notify → investigate → resolve loop"),
+            ("Optimization simulator",  "Policy scenario modelling with MW/BDT/CO₂ output"),
         ]
         for t,d in items:
             st.markdown(f"""<div style='display:flex;gap:10px;padding:7px 0;
@@ -854,16 +758,15 @@ elif "Government" in page:
 <div style='color:#22C55E;font-size:16px'>✓</div>
 <div><div style='color:#F8FAFC;font-size:13px;font-weight:500'>{t}</div>
 <div style='color:#94A3B8;font-size:12px'>{d}</div></div></div>""", unsafe_allow_html=True)
-
     with col_r:
         st.markdown('<div class="section-hdr">What government provides (6 asks)</div>', unsafe_allow_html=True)
         needs = [
-            ("BPDB SCADA data API","Read-only grid telemetry — standard data sharing MoU"),
-            ("DESCO pilot meter dataset","50 commercial buildings, 3-month trial period"),
+            ("BPDB SCADA data API",       "Read-only grid telemetry — standard data sharing MoU"),
+            ("DESCO pilot meter dataset",  "50 commercial buildings, 3-month trial period"),
             ("5 pilot factory partnerships","Narayanganj RMG zone preferred"),
-            ("BTRC LoRaWAN spectrum","868MHz band authorization letter"),
-            ("Regulatory sandbox","6-month smart meter field-test exemption"),
-            ("Data MoU signing","Standard innovator-government data agreement"),
+            ("BTRC LoRaWAN spectrum",      "868MHz band authorization letter"),
+            ("Regulatory sandbox",         "6-month smart meter field-test exemption"),
+            ("Data MoU signing",           "Standard innovator-government data agreement"),
         ]
         for t,d in needs:
             st.markdown(f"""<div style='display:flex;gap:10px;padding:7px 0;
@@ -871,13 +774,11 @@ elif "Government" in page:
 <div style='color:#F59E0B;font-size:16px'>→</div>
 <div><div style='color:#FCD34D;font-size:13px;font-weight:500'>{t}</div>
 <div style='color:#94A3B8;font-size:12px'>{d}</div></div></div>""", unsafe_allow_html=True)
-
-    # Deployment phases
     st.markdown('<div class="section-hdr">3-phase national deployment</div>', unsafe_allow_html=True)
     phases = [
-        ("Phase 1 — Pilot (6 months)",  "5 factories + 50 buildings. Prove 20%+ wastage reduction with real data.", "৳1.2 Crore", "#F59E0B"),
-        ("Phase 2 — Scale (18 months)", "500 factories + 200 buildings. DESCO integration. 800 MW recovered.", "৳8 Crore",   "#22C55E"),
-        ("Phase 3 — National (Year 2+)","All 8 divisions. BPDB SCADA integration. 3,000 MW recovered nationally.", "৳45–80 Crore","#0D9488"),
+        ("Phase 1 — Pilot (6 months)",   "5 factories + 50 buildings. Prove 20%+ wastage reduction with real data.", "৳1.2 Crore", "#F59E0B"),
+        ("Phase 2 — Scale (18 months)",  "500 factories + 200 buildings. DESCO integration. 800 MW recovered.",      "৳8 Crore",   "#22C55E"),
+        ("Phase 3 — National (Year 2+)", "All 8 divisions. BPDB SCADA integration. 3,000 MW recovered nationally.",  "৳45–80 Crore","#0D9488"),
     ]
     for title,desc,cost,c in phases:
         st.markdown(f"""
